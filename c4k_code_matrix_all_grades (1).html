@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Code4Kids Code Matrix</title>
+
+  <!-- Papa Parse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      margin: 0;
+      padding: 0;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 32px auto;
+      padding: 24px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.6rem;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: flex-start;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    select {
+      min-width: 220px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 0.95rem;
+      background: #fff;
+    }
+
+    select[multiple] {
+      min-height: 260px;
+      min-width: 260px;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #777;
+    }
+
+    .search-input {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+      min-width: 260px;
+    }
+
+    .status {
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: 6px;
+    }
+
+    .status.ok {
+      color: #0b7285;
+    }
+
+    .status.error {
+      color: #b02a37;
+    }
+
+    .export-options {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e2e4e8;
+      font-size: 0.8rem;
+    }
+
+    .export-options-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .export-options-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+    }
+
+    .export-options-grid label {
+      font-weight: 400;
+      font-size: 0.8rem;
+    }
+
+    .actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #0b7285;
+      background: #0b7285;
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #ccc;
+      border-color: #ccc;
+      cursor: default;
+    }
+
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+
+    table {
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 6px 8px;
+      border: 1px solid #e2e4e8;
+      text-align: center;
+    }
+
+    th.sticky-col,
+    td.sticky-col {
+      position: sticky;
+      left: 0;
+      background: #fdfdfd;
+      z-index: 2;
+      text-align: left;
+      min-width: 260px;
+    }
+
+    thead th.sticky-col {
+      z-index: 3;
+    }
+
+    thead {
+      background: #f0f2f5;
+    }
+
+    th {
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #444;
+    }
+
+    tr:nth-child(even) td {
+      background: #fafbfc;
+    }
+
+    .code-header {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-size: 0.75rem;
+      min-width: 32px;
+    }
+
+    .cell-p {
+      font-weight: 700;
+      color: #0b7285;
+    }
+
+    .cell-s {
+      font-weight: 700;
+      color: #b05e0b;
+    }
+
+    .empty-state {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: #777;
+    }
+
+    @media (max-width: 800px) {
+      .controls {
+        flex-direction: column;
+      }
+
+      select[multiple] {
+        min-height: 200px;
+        min-width: 100%;
+      }
+
+      .search-input {
+        min-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Code4Kids Code Matrix</h1>
+    <div class="subtitle">
+      Linked to your curriculum sheet. Choose a grade, select one or more lessons, see which codes are addressed as Primary (P) or Supporting (S), search by keyword, and export the matrix.
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="gradeSelect">Grade</label>
+        <select id="gradeSelect" disabled>
+          <option value="">Loading grades...</option>
+        </select>
+        <div id="loadStatus" class="status">Loading lessons from curriculum sheet...</div>
+      </div>
+
+      <div class="control-group">
+        <label for="lessonSearch">Search lessons</label>
+        <input id="lessonSearch" class="search-input" type="text" placeholder="Type a keyword (for example Scratch, data, networks)" disabled />
+        <label for="lessonSelect">Lessons</label>
+        <select id="lessonSelect" multiple disabled></select>
+        <div class="hint">
+          Hold Ctrl (Windows) or Cmd (Mac) to select more than one lesson.
+        </div>
+
+        <div class="export-options">
+          <div class="export-options-title">Include these columns in CSV export:</div>
+          <div class="export-options-grid">
+            <label><input type="checkbox" id="optDesc" checked> Lesson description</label>
+            <label><input type="checkbox" id="optPrimaryDesc" checked> Primary description</label>
+            <label><input type="checkbox" id="optSubDesc" checked> Supporting description</label>
+            <label><input type="checkbox" id="optAssess" checked> Assessment types</label>
+            <label><input type="checkbox" id="optPractices" checked> Computational practices</label>
+            <label><input type="checkbox" id="optFormat" checked> Lesson format</label>
+            <label><input type="checkbox" id="optTech" checked> Technology used</label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="exportBtn" disabled>Export matrix as CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table id="matrixTable">
+        <thead>
+          <tr id="headerRow">
+            <th class="sticky-col">Lesson title</th>
+          </tr>
+        </thead>
+        <tbody id="matrixBody"></tbody>
+      </table>
+    </div>
+    <div id="emptyState" class="empty-state">
+      Once grades and lessons have loaded, choose a grade and select one or more lessons to build the matrix.
+    </div>
+  </div>
+
+  <script>
+    // Your published CSV with Grade column
+    const CURRICULUM_CSV_URL =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vRp7omoHnXHmzGTCuKm5gIWfO0aTpjeJ0qr8hUpHh3wEFA-5Peqdj4pU7Hg9nmGEnNiovjsZBgKP6R7/pub?gid=298728252&single=true&output=csv";
+
+    const loadStatus = document.getElementById("loadStatus");
+    const gradeSelect = document.getElementById("gradeSelect");
+    const lessonSearch = document.getElementById("lessonSearch");
+    const lessonSelect = document.getElementById("lessonSelect");
+    const headerRow = document.getElementById("headerRow");
+    const matrixBody = document.getElementById("matrixBody");
+    const emptyState = document.getElementById("emptyState");
+    const exportBtn = document.getElementById("exportBtn");
+
+    const optDesc = document.getElementById("optDesc");
+    const optPrimaryDesc = document.getElementById("optPrimaryDesc");
+    const optSubDesc = document.getElementById("optSubDesc");
+    const optAssess = document.getElementById("optAssess");
+    const optPractices = document.getElementById("optPractices");
+    const optFormat = document.getElementById("optFormat");
+    const optTech = document.getElementById("optTech");
+
+    let lessons = [];             // all lessons from the sheet
+    let currentGradeLessons = []; // lessons for selected grade
+    let currentCodes = [];        // unique codes for selected grade
+    let lastSelectedLessons = []; // lessons currently in the matrix
+
+    function parseGradeValue(raw) {
+      if (!raw) return null;
+      const text = String(raw).trim();
+      // Try to extract the first number (for example "4", "Grade 4" both become 4)
+      const match = text.match(/(\d+)/);
+      if (!match) return null;
+      const num = Number(match[1]);
+      return Number.isNaN(num) ? null : num;
+    }
+
+    function splitCodes(str) {
+      if (!str) return [];
+      return str
+        .split(/[;,]/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+    }
+
+    function buildLessonsFromRows(rows) {
+      const allLessons = [];
+
+      rows.forEach(row => {
+        const gradeVal = row["Grade"] || row["grade"] || "";
+        const gradeNum = parseGradeValue(gradeVal);
+        if (!gradeNum) return;
+
+        const code = (row["Code"] || row["code"] || "").trim();
+        const title =
+          (row["Lesson title"] || row["Lesson Title"] || row["lesson title"] || "").trim();
+
+        if (!code && !title) return;
+
+        const description = row["Description"] || "";
+        const primaryCodesRaw =
+          row["Primary concept/s code/s"] ||
+          row["Primary concept codes"] ||
+          row["Primary codes"] ||
+          "";
+        const primaryDesc =
+          row["Description (Primary)"] || row["Primary description"] || "";
+        const subCodesRaw =
+          row["Sub concept/s codes"] || row["Sub codes"] || "";
+        const subDesc =
+          row["Description (Sub)"] || row["Supporting description"] || "";
+        const assessmentTypes = row["Assessment types"] || "";
+        const practices =
+          row["Computational Practices Covered"] ||
+          row["Computational practices"] ||
+          "";
+        const format = row["Lesson format"] || "";
+        const technology = row["Technology used"] || "";
+
+        allLessons.push({
+          grade: gradeNum,
+          lessonCode: code,
+          lessonTitle: title,
+          description,
+          primaryCodes: splitCodes(primaryCodesRaw),
+          primaryDesc,
+          supportingCodes: splitCodes(subCodesRaw),
+          supportingDesc: subDesc,
+          assessmentTypes,
+          practices,
+          format,
+          technology
+        });
+      });
+
+      return allLessons;
+    }
+
+    function getAvailableGrades() {
+      const set = new Set();
+      lessons.forEach(l => {
+        if (l.grade != null) {
+          set.add(l.grade);
+        }
+      });
+      return Array.from(set).sort((a, b) => a - b);
+    }
+
+    function getAllCodesForGrade(gradeNum) {
+      const codesSet = new Set();
+      lessons
+        .filter(l => l.grade === gradeNum)
+        .forEach(l => {
+          l.primaryCodes.forEach(c => codesSet.add(c));
+          l.supportingCodes.forEach(c => codesSet.add(c));
+        });
+      return Array.from(codesSet).sort();
+    }
+
+    function getFilteredLessons(keyword) {
+      const k = keyword.trim().toLowerCase();
+      if (!k) return currentGradeLessons;
+      return currentGradeLessons.filter(l => {
+        const haystack = [
+          l.lessonTitle,
+          l.description,
+          l.assessmentTypes,
+          l.technology,
+          l.format,
+          l.primaryDesc,
+          l.supportingDesc
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(k);
+      });
+    }
+
+    function populateGradeSelect() {
+      const grades = getAvailableGrades();
+      gradeSelect.innerHTML = "";
+
+      if (!grades.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No grades found";
+        gradeSelect.appendChild(opt);
+        gradeSelect.disabled = true;
+        return;
+      }
+
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select a grade";
+      gradeSelect.appendChild(placeholder);
+
+      grades.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = String(g);
+        opt.textContent = "Grade " + g;
+        gradeSelect.appendChild(opt);
+      });
+
+      gradeSelect.disabled = false;
+
+      // Option: auto-select the first grade (for example Grade 4)
+      if (grades.includes(4)) {
+        gradeSelect.value = "4";
+        onGradeChange();
+      }
+    }
+
+    function populateLessonList(keyword = "") {
+      const previouslySelected = Array.from(lessonSelect.selectedOptions).map(
+        o => o.value
+      );
+      const filtered = getFilteredLessons(keyword);
+
+      lessonSelect.innerHTML = "";
+      filtered.forEach(l => {
+        const opt = document.createElement("option");
+        opt.value = l.lessonCode;
+        opt.textContent = l.lessonTitle;
+        if (previouslySelected.includes(l.lessonCode)) {
+          opt.selected = true;
+        }
+        lessonSelect.appendChild(opt);
+      });
+    }
+
+    function buildHeaderRow() {
+      headerRow.innerHTML = "";
+      const lessonTh = document.createElement("th");
+      lessonTh.textContent = "Lesson title";
+      lessonTh.className = "sticky-col";
+      headerRow.appendChild(lessonTh);
+
+      currentCodes.forEach(code => {
+        const th = document.createElement("th");
+        th.className = "code-header";
+        th.textContent = code;
+        headerRow.appendChild(th);
+      });
+    }
+
+    function renderMatrix() {
+      const selectedOptions = Array.from(lessonSelect.selectedOptions);
+      matrixBody.innerHTML = "";
+
+      if (selectedOptions.length === 0) {
+        emptyState.style.display = "block";
+        exportBtn.disabled = true;
+        lastSelectedLessons = [];
+        return;
+      }
+      emptyState.style.display = "none";
+      exportBtn.disabled = false;
+
+      const selectedCodes = selectedOptions.map(o => o.value);
+      const selectedLessons = currentGradeLessons.filter(l =>
+        selectedCodes.includes(l.lessonCode)
+      );
+      lastSelectedLessons = selectedLessons;
+
+      selectedLessons.forEach(lesson => {
+        const tr = document.createElement("tr");
+
+        const lessonCell = document.createElement("td");
+        lessonCell.textContent = lesson.lessonTitle;
+        lessonCell.className = "sticky-col";
+        tr.appendChild(lessonCell);
+
+        currentCodes.forEach(code => {
+          const td = document.createElement("td");
+          if (lesson.primaryCodes.includes(code)) {
+            td.textContent = "P";
+            td.className = "cell-p";
+          } else if (lesson.supportingCodes.includes(code)) {
+            td.textContent = "S";
+            td.className = "cell-s";
+          } else {
+            td.textContent = "";
+          }
+          tr.appendChild(td);
+        });
+
+        matrixBody.appendChild(tr);
+      });
+    }
+
+    function toCSVValue(value) {
+      if (value == null) return "";
+      const str = String(value);
+      if (/[",\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function exportMatrixCSV() {
+      if (!lastSelectedLessons.length || !currentCodes.length) {
+        alert("Select one or more lessons first.");
+        return;
+      }
+
+      const extraFields = [];
+      if (optDesc.checked)
+        extraFields.push({
+          header: "Lesson description",
+          getter: l => l.description || ""
+        });
+      if (optPrimaryDesc.checked)
+        extraFields.push({
+          header: "Primary description",
+          getter: l => l.primaryDesc || ""
+        });
+      if (optSubDesc.checked)
+        extraFields.push({
+          header: "Supporting description",
+          getter: l => l.supportingDesc || ""
+        });
+      if (optAssess.checked)
+        extraFields.push({
+          header: "Assessment types",
+          getter: l => l.assessmentTypes || ""
+        });
+      if (optPractices.checked)
+        extraFields.push({
+          header: "Computational practices",
+          getter: l => l.practices || ""
+        });
+      if (optFormat.checked)
+        extraFields.push({
+          header: "Lesson format",
+          getter: l => l.format || ""
+        });
+      if (optTech.checked)
+        extraFields.push({
+          header: "Technology used",
+          getter: l => l.technology || ""
+        });
+
+      const rows = [];
+      const header = ["Grade", "Lesson title"];
+      extraFields.forEach(f => header.push(f.header));
+      header.push(...currentCodes);
+      rows.push(header);
+
+      lastSelectedLessons.forEach(lesson => {
+        const row = ["Grade " + lesson.grade, lesson.lessonTitle];
+        extraFields.forEach(f => row.push(f.getter(lesson)));
+        currentCodes.forEach(code => {
+          let cell = "";
+          if (lesson.primaryCodes.includes(code)) {
+            cell = "P";
+          } else if (lesson.supportingCodes.includes(code)) {
+            cell = "S";
+          }
+          row.push(cell);
+        });
+        rows.push(row);
+      });
+
+      const csvContent = rows
+        .map(r => r.map(toCSVValue).join(","))
+        .join("\n");
+
+      const blob = new Blob([csvContent], {
+        type: "text/csv;charset=utf-8;"
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "c4k_code_matrix.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function onGradeChange() {
+      const value = gradeSelect.value;
+      if (!value) {
+        currentGradeLessons = [];
+        currentCodes = [];
+        lessonSelect.innerHTML = "";
+        matrixBody.innerHTML = "";
+        buildHeaderRow();
+        emptyState.style.display = "block";
+        exportBtn.disabled = true;
+        return;
+      }
+
+      const gradeNum = Number(value);
+      currentGradeLessons = lessons.filter(l => l.grade === gradeNum);
+      currentCodes = getAllCodesForGrade(gradeNum);
+
+      populateLessonList(lessonSearch.value);
+      buildHeaderRow();
+      matrixBody.innerHTML = "";
+      emptyState.style.display = "block";
+      exportBtn.disabled = true;
+    }
+
+    function initEvents() {
+      gradeSelect.addEventListener("change", onGradeChange);
+      lessonSelect.addEventListener("change", renderMatrix);
+
+      lessonSearch.addEventListener("input", () => {
+        populateLessonList(lessonSearch.value);
+        renderMatrix();
+      });
+
+      exportBtn.addEventListener("click", exportMatrixCSV);
+    }
+
+    function initFromCsvRows(rows) {
+      lessons = buildLessonsFromRows(rows);
+
+      if (!lessons.length) {
+        loadStatus.textContent =
+          "No lessons found in the sheet. Please check that Grade, Code and Lesson title columns are filled.";
+        loadStatus.className = "status error";
+        return;
+      }
+
+      loadStatus.textContent =
+        "Loaded " + lessons.length + " lessons from the curriculum sheet.";
+      loadStatus.className = "status ok";
+
+      // enable controls
+      gradeSelect.disabled = false;
+      lessonSearch.disabled = false;
+      lessonSelect.disabled = false;
+
+      populateGradeSelect();
+      emptyState.style.display = "block";
+    }
+
+    function loadCsv() {
+      loadStatus.textContent =
+        "Loading lessons from curriculum sheet...";
+      loadStatus.className = "status";
+
+      Papa.parse(CURRICULUM_CSV_URL, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+          if (results.errors && results.errors.length) {
+            console.error(results.errors);
+          }
+          initFromCsvRows(results.data || []);
+        },
+        error: function (err) {
+          console.error(err);
+          loadStatus.textContent =
+            "There was a problem loading the curriculum sheet.";
+          loadStatus.className = "status error";
+        }
+      });
+    }
+
+    // Initialise
+    initEvents();
+    loadCsv();
+  </script>
+</body>
+</html>
