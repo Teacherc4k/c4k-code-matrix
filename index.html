@@ -97,6 +97,41 @@
       color: #b02a37;
     }
 
+    .grades-label {
+      margin-bottom: 4px;
+    }
+
+    .grade-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      margin-bottom: 4px;
+    }
+
+    .grade-chip {
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: #f1f3f5;
+      border-radius: 999px;
+      padding: 2px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .grade-chip input {
+      margin: 0;
+    }
+
+    .select-all-row {
+      margin-top: 2px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .export-options {
       margin-top: 10px;
       padding: 8px 10px;
@@ -234,15 +269,17 @@
   <div class="app">
     <h1>Code4Kids Code Matrix</h1>
     <div class="subtitle">
-      Linked to your curriculum sheet. Choose a grade, select one or more lessons, see which codes are addressed as Primary (P) or Supporting (S), search by keyword, and export the matrix.
+      Linked to your curriculum sheet. Choose one or more grades, select lessons, see which codes are addressed as Primary (P) or Supporting (S), search by keyword, and export the matrix.
     </div>
 
     <div class="controls">
       <div class="control-group">
-        <label for="gradeSelect">Grade</label>
-        <select id="gradeSelect" disabled>
-          <option value="">Loading grades...</option>
-        </select>
+        <label class="grades-label">Grades</label>
+        <div id="gradeCheckboxes" class="grade-checkboxes"></div>
+        <label class="select-all-row">
+          <input type="checkbox" id="gradeSelectAll" />
+          Select all grades
+        </label>
         <div id="loadStatus" class="status">Loading lessons from curriculum sheet...</div>
       </div>
 
@@ -285,7 +322,7 @@
       </table>
     </div>
     <div id="emptyState" class="empty-state">
-      Once grades and lessons have loaded, choose a grade and select one or more lessons to build the matrix.
+      Once lessons have loaded, choose one or more grades and select lessons to build the matrix.
     </div>
   </div>
 
@@ -295,7 +332,8 @@
       "https://docs.google.com/spreadsheets/d/e/2PACX-1vRp7omoHnXHmzGTCuKm5gIWfO0aTpjeJ0qr8hUpHh3wEFA-5Peqdj4pU7Hg9nmGEnNiovjsZBgKP6R7/pub?gid=298728252&single=true&output=csv";
 
     const loadStatus = document.getElementById("loadStatus");
-    const gradeSelect = document.getElementById("gradeSelect");
+    const gradeCheckboxesContainer = document.getElementById("gradeCheckboxes");
+    const gradeSelectAll = document.getElementById("gradeSelectAll");
     const lessonSearch = document.getElementById("lessonSearch");
     const lessonSelect = document.getElementById("lessonSelect");
     const headerRow = document.getElementById("headerRow");
@@ -312,8 +350,8 @@
     const optTech = document.getElementById("optTech");
 
     let lessons = [];             // all lessons from the sheet
-    let currentGradeLessons = []; // lessons for selected grade
-    let currentCodes = [];        // unique codes for selected grade
+    let currentGradeLessons = []; // lessons for selected grades
+    let currentCodes = [];        // unique codes for selected grades
     let lastSelectedLessons = []; // lessons currently in the matrix
 
     function parseGradeValue(raw) {
@@ -397,15 +435,52 @@
       return Array.from(set).sort((a, b) => a - b);
     }
 
-    function getAllCodesForGrade(gradeNum) {
+    function getAllCodesForGrades(gradeNums) {
       const codesSet = new Set();
       lessons
-        .filter(l => l.grade === gradeNum)
+        .filter(l => gradeNums.includes(l.grade))
         .forEach(l => {
           l.primaryCodes.forEach(c => codesSet.add(c));
           l.supportingCodes.forEach(c => codesSet.add(c));
         });
       return Array.from(codesSet).sort();
+    }
+
+    function getSelectedGrades() {
+      const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+      const grades = [];
+      boxes.forEach(cb => {
+        if (cb.checked) {
+          const num = Number(cb.value);
+          if (!Number.isNaN(num)) {
+            grades.push(num);
+          }
+        }
+      });
+      return grades;
+    }
+
+    function syncSelectAllState() {
+      const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+      if (!boxes.length) {
+        gradeSelectAll.checked = false;
+        gradeSelectAll.indeterminate = false;
+        return;
+      }
+      let checkedCount = 0;
+      boxes.forEach(cb => {
+        if (cb.checked) checkedCount += 1;
+      });
+      if (checkedCount === 0) {
+        gradeSelectAll.checked = false;
+        gradeSelectAll.indeterminate = false;
+      } else if (checkedCount === boxes.length) {
+        gradeSelectAll.checked = true;
+        gradeSelectAll.indeterminate = false;
+      } else {
+        gradeSelectAll.checked = false;
+        gradeSelectAll.indeterminate = true;
+      }
     }
 
     function getFilteredLessons(keyword) {
@@ -425,40 +500,6 @@
           .toLowerCase();
         return haystack.includes(k);
       });
-    }
-
-    function populateGradeSelect() {
-      const grades = getAvailableGrades();
-      gradeSelect.innerHTML = "";
-
-      if (!grades.length) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "No grades found";
-        gradeSelect.appendChild(opt);
-        gradeSelect.disabled = true;
-        return;
-      }
-
-      const placeholder = document.createElement("option");
-      placeholder.value = "";
-      placeholder.textContent = "Select a grade";
-      gradeSelect.appendChild(placeholder);
-
-      grades.forEach(g => {
-        const opt = document.createElement("option");
-        opt.value = String(g);
-        opt.textContent = "Grade " + g;
-        gradeSelect.appendChild(opt);
-      });
-
-      gradeSelect.disabled = false;
-
-      // Option: auto-select the first grade (for example Grade 4)
-      if (grades.includes(4)) {
-        gradeSelect.value = "4";
-        onGradeChange();
-      }
     }
 
     function populateLessonList(keyword = "") {
@@ -629,9 +670,9 @@
       URL.revokeObjectURL(url);
     }
 
-    function onGradeChange() {
-      const value = gradeSelect.value;
-      if (!value) {
+    function onGradesChanged() {
+      const selectedGrades = getSelectedGrades();
+      if (!selectedGrades.length) {
         currentGradeLessons = [];
         currentCodes = [];
         lessonSelect.innerHTML = "";
@@ -642,9 +683,8 @@
         return;
       }
 
-      const gradeNum = Number(value);
-      currentGradeLessons = lessons.filter(l => l.grade === gradeNum);
-      currentCodes = getAllCodesForGrade(gradeNum);
+      currentGradeLessons = lessons.filter(l => selectedGrades.includes(l.grade));
+      currentCodes = getAllCodesForGrades(selectedGrades);
 
       populateLessonList(lessonSearch.value);
       buildHeaderRow();
@@ -653,8 +693,49 @@
       exportBtn.disabled = true;
     }
 
+    function renderGradeCheckboxes() {
+      const grades = getAvailableGrades();
+      gradeCheckboxesContainer.innerHTML = "";
+
+      if (!grades.length) {
+        gradeCheckboxesContainer.textContent = "No grades found in sheet.";
+        gradeSelectAll.disabled = true;
+        return;
+      }
+
+      grades.forEach(g => {
+        const label = document.createElement("label");
+        label.className = "grade-chip";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = String(g);
+
+        // Default: select Grade 4 if present, otherwise select all
+        if (g === 4) {
+          cb.checked = true;
+        }
+
+        cb.addEventListener("change", () => {
+          syncSelectAllState();
+          onGradesChanged();
+        });
+
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode("Grade " + g));
+        gradeCheckboxesContainer.appendChild(label);
+      });
+
+      // If nothing is checked (for example there is no Grade 4), select all by default
+      if (!getSelectedGrades().length) {
+        const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+        boxes.forEach(cb => cb.checked = true);
+      }
+
+      syncSelectAllState();
+      onGradesChanged();
+    }
+
     function initEvents() {
-      gradeSelect.addEventListener("change", onGradeChange);
       lessonSelect.addEventListener("change", renderMatrix);
 
       lessonSearch.addEventListener("input", () => {
@@ -663,6 +744,14 @@
       });
 
       exportBtn.addEventListener("click", exportMatrixCSV);
+
+      gradeSelectAll.addEventListener("change", () => {
+        const checked = gradeSelectAll.checked;
+        const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+        boxes.forEach(cb => cb.checked = checked);
+        syncSelectAllState();
+        onGradesChanged();
+      });
     }
 
     function initFromCsvRows(rows) {
@@ -680,11 +769,10 @@
       loadStatus.className = "status ok";
 
       // enable controls
-      gradeSelect.disabled = false;
       lessonSearch.disabled = false;
       lessonSelect.disabled = false;
 
-      populateGradeSelect();
+      renderGradeCheckboxes();
       emptyState.style.display = "block";
     }
 
