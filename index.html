@@ -295,6 +295,7 @@
         <div class="export-options">
           <div class="export-options-title">Include these columns in CSV export:</div>
           <div class="export-options-grid">
+            <label><input type="checkbox" id="optCode" checked> Lesson code</label>
             <label><input type="checkbox" id="optDesc" checked> Lesson description</label>
             <label><input type="checkbox" id="optPrimaryDesc" checked> Primary description</label>
             <label><input type="checkbox" id="optSubDesc" checked> Supporting description</label>
@@ -341,6 +342,7 @@
     const emptyState = document.getElementById("emptyState");
     const exportBtn = document.getElementById("exportBtn");
 
+    const optCode = document.getElementById("optCode");
     const optDesc = document.getElementById("optDesc");
     const optPrimaryDesc = document.getElementById("optPrimaryDesc");
     const optSubDesc = document.getElementById("optSubDesc");
@@ -596,6 +598,11 @@
       }
 
       const extraFields = [];
+      if (optCode.checked)
+        extraFields.push({
+          header: "Lesson code",
+          getter: l => l.lessonCode || ""
+        });
       if (optDesc.checked)
         extraFields.push({
           header: "Lesson description",
