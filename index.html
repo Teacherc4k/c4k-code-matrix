@@ -285,7 +285,13 @@
 
       <div class="control-group">
         <label for="lessonSearch">Search lessons</label>
-        <input id="lessonSearch" class="search-input" type="text" placeholder="Type a keyword (for example Scratch, data, networks)" disabled />
+        <input
+          id="lessonSearch"
+          class="search-input"
+          type="text"
+          placeholder='Type keywords (for example: Scratch loops, or "data analysis"). Use or: to match any term (for example: or: Scratch loops)'
+          disabled
+        />
         <label for="lessonSelect">Lessons</label>
         <select id="lessonSelect" multiple disabled></select>
         <div class="hint">
@@ -485,9 +491,34 @@
       }
     }
 
+    function tokenizeSearchQuery(raw) {
+      // Supports:
+      // - Multiple terms separated by spaces, commas, or semicolons
+      // - Quoted phrases, for example: "data analysis"
+      // - Optional prefix: or: term1 term2
+      const text = (raw || "").trim().toLowerCase();
+      if (!text) return { mode: "and", terms: [] };
+
+      const isOr = text.startsWith("or:");
+      const query = isOr ? text.slice(3).trim() : text;
+      if (!query) return { mode: isOr ? "or" : "and", terms: [] };
+
+      const terms = [];
+      const re = /"([^"]+)"|[^,\s;]+/g;
+      let match;
+
+      while ((match = re.exec(query)) !== null) {
+        const phrase = (match[1] != null ? match[1] : match[0]).trim();
+        if (phrase) terms.push(phrase);
+      }
+
+      return { mode: isOr ? "or" : "and", terms };
+    }
+
     function getFilteredLessons(keyword) {
-      const k = keyword.trim().toLowerCase();
-      if (!k) return currentGradeLessons;
+      const { mode, terms } = tokenizeSearchQuery(keyword);
+      if (!terms.length) return currentGradeLessons;
+
       return currentGradeLessons.filter(l => {
         const haystack = [
           l.lessonTitle,
@@ -500,7 +531,11 @@
         ]
           .join(" ")
           .toLowerCase();
-        return haystack.includes(k);
+
+        if (mode === "or") {
+          return terms.some(term => haystack.includes(term));
+        }
+        return terms.every(term => haystack.includes(term));
       });
     }
 
