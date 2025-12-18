@@ -353,6 +353,7 @@
           <div class="export-options-title">Include these columns in CSV export:</div>
           <div class="export-options-grid">
             <label><input type="checkbox" id="optCode" checked> Lesson code</label>
+            <label><input type="checkbox" id="optPathway" checked> Pathway category</label>
             <label><input type="checkbox" id="optDesc" checked> Lesson description</label>
             <label><input type="checkbox" id="optPrimaryDesc" checked> Primary description</label>
             <label><input type="checkbox" id="optSubDesc" checked> Supporting description</label>
@@ -403,6 +404,7 @@
     const modeOr = document.getElementById("modeOr");
 
     const optCode = document.getElementById("optCode");
+    const optPathway = document.getElementById("optPathway");
     const optDesc = document.getElementById("optDesc");
     const optPrimaryDesc = document.getElementById("optPrimaryDesc");
     const optSubDesc = document.getElementById("optSubDesc");
@@ -452,6 +454,12 @@
 
         if (!code && !title) return;
 
+        const pathwayCategory =
+          row["Pathway Category"] ||
+          row["Pathway category"] ||
+          row["pathway category"] ||
+          "";
+
         const description = row["Description"] || "";
         const primaryCodesRaw =
           row["Primary concept/s code/s"] ||
@@ -476,6 +484,7 @@
           grade: gradeNum,
           lessonCode: code,
           lessonTitle: title,
+          pathwayCategory,
           description,
           primaryCodes: splitCodes(primaryCodesRaw),
           primaryDesc,
@@ -599,6 +608,7 @@
       return currentGradeLessons.filter(l => {
         const haystack = [
           l.lessonTitle,
+          l.pathwayCategory,
           l.description,
           l.assessmentTypes,
           l.technology,
@@ -719,6 +729,11 @@
         extraFields.push({
           header: "Lesson code",
           getter: l => l.lessonCode || ""
+        });
+      if (optPathway.checked)
+        extraFields.push({
+          header: "Pathway category",
+          getter: l => l.pathwayCategory || ""
         });
       if (optDesc.checked)
         extraFields.push({
