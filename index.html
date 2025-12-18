@@ -79,7 +79,7 @@
       border-radius: 6px;
       border: 1px solid #ccc;
       font-size: 0.9rem;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
       min-width: 260px;
     }
 
@@ -130,6 +130,40 @@
       display: flex;
       align-items: center;
       gap: 4px;
+    }
+
+    .search-mode {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e2e4e8;
+      font-size: 0.8rem;
+      max-width: 520px;
+    }
+
+    .search-mode .mode-label {
+      font-weight: 600;
+      color: #333;
+      margin-right: 4px;
+    }
+
+    .search-mode label {
+      font-weight: 400;
+      font-size: 0.8rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .search-mode input[type="radio"] {
+      margin: 0;
     }
 
     .export-options {
@@ -262,6 +296,10 @@
       .search-input {
         min-width: 100%;
       }
+
+      .search-mode {
+        max-width: 100%;
+      }
     }
   </style>
 </head>
@@ -289,9 +327,22 @@
           id="lessonSearch"
           class="search-input"
           type="text"
-          placeholder='Type keywords (for example: Scratch loops, or "data analysis"). Use or: to match any term (for example: or: Scratch loops)'
+          placeholder='Type keywords (for example: scratch games) or use quotes (for example: "data analysis"). Separate terms with spaces, commas, or semicolons.'
           disabled
         />
+
+        <div class="search-mode" aria-label="Search mode">
+          <span class="mode-label">Match mode : </span>
+          <label>
+            <input type="radio" name="searchMode" id="modeAnd" value="and" checked disabled />
+            All terms (AND)
+          </label>
+          <label>
+            <input type="radio" name="searchMode" id="modeOr" value="or" disabled />
+            Any term (OR)
+          </label>
+        </div>
+
         <label for="lessonSelect">Lessons</label>
         <select id="lessonSelect" multiple disabled></select>
         <div class="hint">
@@ -348,6 +399,9 @@
     const emptyState = document.getElementById("emptyState");
     const exportBtn = document.getElementById("exportBtn");
 
+    const modeAnd = document.getElementById("modeAnd");
+    const modeOr = document.getElementById("modeOr");
+
     const optCode = document.getElementById("optCode");
     const optDesc = document.getElementById("optDesc");
     const optPrimaryDesc = document.getElementById("optPrimaryDesc");
@@ -361,6 +415,10 @@
     let currentGradeLessons = []; // lessons for selected grades
     let currentCodes = [];        // unique codes for selected grades
     let lastSelectedLessons = []; // lessons currently in the matrix
+
+    function getSearchMode() {
+      return modeOr.checked ? "or" : "and";
+    }
 
     function parseGradeValue(raw) {
       if (!raw) return null;
@@ -495,29 +553,48 @@
       // Supports:
       // - Multiple terms separated by spaces, commas, or semicolons
       // - Quoted phrases, for example: "data analysis"
-      // - Optional prefix: or: term1 term2
       const text = (raw || "").trim().toLowerCase();
-      if (!text) return { mode: "and", terms: [] };
-
-      const isOr = text.startsWith("or:");
-      const query = isOr ? text.slice(3).trim() : text;
-      if (!query) return { mode: isOr ? "or" : "and", terms: [] };
+      if (!text) return [];
 
       const terms = [];
       const re = /"([^"]+)"|[^,\s;]+/g;
       let match;
 
-      while ((match = re.exec(query)) !== null) {
+      while ((match = re.exec(text)) !== null) {
         const phrase = (match[1] != null ? match[1] : match[0]).trim();
         if (phrase) terms.push(phrase);
       }
 
-      return { mode: isOr ? "or" : "and", terms };
+      return terms;
+    }
+
+    function buildSimpleVariants(term) {
+      const t = String(term || "").trim().toLowerCase();
+      const variants = new Set();
+      if (!t) return [];
+
+      variants.add(t);
+
+      // Simple singular/plural matching:
+      // - games -> game
+      // - game -> games
+      if (t.length > 3) {
+        if (t.endsWith("s")) {
+          variants.add(t.slice(0, -1));
+        } else {
+          variants.add(t + "s");
+        }
+      }
+
+      return Array.from(variants);
     }
 
     function getFilteredLessons(keyword) {
-      const { mode, terms } = tokenizeSearchQuery(keyword);
+      const mode = getSearchMode();
+      const terms = tokenizeSearchQuery(keyword);
       if (!terms.length) return currentGradeLessons;
+
+      const termVariants = terms.map(buildSimpleVariants);
 
       return currentGradeLessons.filter(l => {
         const haystack = [
@@ -532,10 +609,15 @@
           .join(" ")
           .toLowerCase();
 
+        const matchesAnyVariant = (variants) =>
+          variants.some(v => haystack.includes(v));
+
         if (mode === "or") {
-          return terms.some(term => haystack.includes(term));
+          return termVariants.some(group => matchesAnyVariant(group));
         }
-        return terms.every(term => haystack.includes(term));
+
+        // AND mode : every term group must match at least one variant
+        return termVariants.every(group => matchesAnyVariant(group));
       });
     }
 
@@ -785,6 +867,16 @@
         renderMatrix();
       });
 
+      modeAnd.addEventListener("change", () => {
+        populateLessonList(lessonSearch.value);
+        renderMatrix();
+      });
+
+      modeOr.addEventListener("change", () => {
+        populateLessonList(lessonSearch.value);
+        renderMatrix();
+      });
+
       exportBtn.addEventListener("click", exportMatrixCSV);
 
       gradeSelectAll.addEventListener("change", () => {
@@ -813,6 +905,8 @@
       // enable controls
       lessonSearch.disabled = false;
       lessonSelect.disabled = false;
+      modeAnd.disabled = false;
+      modeOr.disabled = false;
 
       renderGradeCheckboxes();
       emptyState.style.display = "block";
