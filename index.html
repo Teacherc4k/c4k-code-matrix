@@ -97,18 +97,22 @@
       color: #b02a37;
     }
 
-    .grades-label {
+    .grades-label,
+    .pathways-label {
       margin-bottom: 4px;
     }
 
-    .grade-checkboxes {
+    .grade-checkboxes,
+    .pathway-checkboxes {
       display: flex;
       flex-wrap: wrap;
       gap: 6px 12px;
       margin-bottom: 4px;
+      max-width: 520px;
     }
 
-    .grade-chip {
+    .grade-chip,
+    .pathway-chip {
       font-size: 0.8rem;
       font-weight: 500;
       background: #f1f3f5;
@@ -116,11 +120,13 @@
       padding: 2px 10px;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       cursor: pointer;
+      user-select: none;
     }
 
-    .grade-chip input {
+    .grade-chip input,
+    .pathway-chip input {
       margin: 0;
     }
 
@@ -300,6 +306,11 @@
       .search-mode {
         max-width: 100%;
       }
+
+      .grade-checkboxes,
+      .pathway-checkboxes {
+        max-width: 100%;
+      }
     }
   </style>
 </head>
@@ -307,7 +318,7 @@
   <div class="app">
     <h1>Code4Kids Code Matrix</h1>
     <div class="subtitle">
-      Linked to your curriculum sheet. Choose one or more grades, select lessons, see which codes are addressed as Primary (P) or Supporting (S), search by keyword, and export the matrix.
+      Linked to your curriculum sheet. Choose one or more grades, optionally filter by pathway category, select lessons, see which codes are addressed as Primary (P) or Supporting (S), search by keyword, and export the matrix.
     </div>
 
     <div class="controls">
@@ -318,6 +329,14 @@
           <input type="checkbox" id="gradeSelectAll" />
           Select all grades
         </label>
+
+        <label class="pathways-label" style="margin-top: 10px;">Pathway category</label>
+        <div id="pathwayCheckboxes" class="pathway-checkboxes"></div>
+        <label class="select-all-row">
+          <input type="checkbox" id="pathwaySelectAll" />
+          Select all pathway categories
+        </label>
+
         <div id="loadStatus" class="status">Loading lessons from curriculum sheet...</div>
       </div>
 
@@ -361,8 +380,11 @@
             <label><input type="checkbox" id="optPractices" checked> Computational practices</label>
             <label><input type="checkbox" id="optFormat" checked> Lesson format</label>
             <label><input type="checkbox" id="optTech" checked> Technology used</label>
+            <label><input type="checkbox" id="optCstaMatrix" checked> Include CSTA code columns</label>
           </div>
         </div>
+
+
 
         <div class="actions">
           <button id="exportBtn" disabled>Export matrix as CSV</button>
@@ -390,9 +412,20 @@
     const CURRICULUM_CSV_URL =
       "https://docs.google.com/spreadsheets/d/e/2PACX-1vRp7omoHnXHmzGTCuKm5gIWfO0aTpjeJ0qr8hUpHh3wEFA-5Peqdj4pU7Hg9nmGEnNiovjsZBgKP6R7/pub?gid=298728252&single=true&output=csv";
 
+    const PATHWAY_OPTIONS = [
+      "Foundational",
+      "Core Progression",
+      "Enrichment",
+      "Cross-Pathway / Assessment"
+    ];
+
     const loadStatus = document.getElementById("loadStatus");
     const gradeCheckboxesContainer = document.getElementById("gradeCheckboxes");
     const gradeSelectAll = document.getElementById("gradeSelectAll");
+
+    const pathwayCheckboxesContainer = document.getElementById("pathwayCheckboxes");
+    const pathwaySelectAll = document.getElementById("pathwaySelectAll");
+
     const lessonSearch = document.getElementById("lessonSearch");
     const lessonSelect = document.getElementById("lessonSelect");
     const headerRow = document.getElementById("headerRow");
@@ -412,9 +445,10 @@
     const optPractices = document.getElementById("optPractices");
     const optFormat = document.getElementById("optFormat");
     const optTech = document.getElementById("optTech");
+    const optCstaMatrix = document.getElementById("optCstaMatrix");
 
     let lessons = [];             // all lessons from the sheet
-    let currentGradeLessons = []; // lessons for selected grades
+    let currentGradeLessons = []; // lessons for selected grades and pathway categories
     let currentCodes = [];        // unique codes for selected grades
     let lastSelectedLessons = []; // lessons currently in the matrix
 
@@ -425,7 +459,6 @@
     function parseGradeValue(raw) {
       if (!raw) return null;
       const text = String(raw).trim();
-      // Try to extract the first number (for example "4", "Grade 4" both become 4)
       const match = text.match(/(\d+)/);
       if (!match) return null;
       const num = Number(match[1]);
@@ -438,6 +471,10 @@
         .split(/[;,]/)
         .map(s => s.trim())
         .filter(s => s.length > 0);
+    }
+
+    function normalisePathway(raw) {
+      return String(raw || "").trim();
     }
 
     function buildLessonsFromRows(rows) {
@@ -484,7 +521,7 @@
           grade: gradeNum,
           lessonCode: code,
           lessonTitle: title,
-          pathwayCategory,
+          pathwayCategory: normalisePathway(pathwayCategory),
           description,
           primaryCodes: splitCodes(primaryCodesRaw),
           primaryDesc,
@@ -503,9 +540,7 @@
     function getAvailableGrades() {
       const set = new Set();
       lessons.forEach(l => {
-        if (l.grade != null) {
-          set.add(l.grade);
-        }
+        if (l.grade != null) set.add(l.grade);
       });
       return Array.from(set).sort((a, b) => a - b);
     }
@@ -527,19 +562,26 @@
       boxes.forEach(cb => {
         if (cb.checked) {
           const num = Number(cb.value);
-          if (!Number.isNaN(num)) {
-            grades.push(num);
-          }
+          if (!Number.isNaN(num)) grades.push(num);
         }
       });
       return grades;
     }
 
-    function syncSelectAllState() {
-      const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+    function getSelectedPathways() {
+      const boxes = pathwayCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+      const pathways = [];
+      boxes.forEach(cb => {
+        if (cb.checked) pathways.push(cb.value);
+      });
+      return pathways;
+    }
+
+    function syncSelectAllState(container, selectAllEl) {
+      const boxes = container.querySelectorAll("input[type=checkbox]");
       if (!boxes.length) {
-        gradeSelectAll.checked = false;
-        gradeSelectAll.indeterminate = false;
+        selectAllEl.checked = false;
+        selectAllEl.indeterminate = false;
         return;
       }
       let checkedCount = 0;
@@ -547,21 +589,18 @@
         if (cb.checked) checkedCount += 1;
       });
       if (checkedCount === 0) {
-        gradeSelectAll.checked = false;
-        gradeSelectAll.indeterminate = false;
+        selectAllEl.checked = false;
+        selectAllEl.indeterminate = false;
       } else if (checkedCount === boxes.length) {
-        gradeSelectAll.checked = true;
-        gradeSelectAll.indeterminate = false;
+        selectAllEl.checked = true;
+        selectAllEl.indeterminate = false;
       } else {
-        gradeSelectAll.checked = false;
-        gradeSelectAll.indeterminate = true;
+        selectAllEl.checked = false;
+        selectAllEl.indeterminate = true;
       }
     }
 
     function tokenizeSearchQuery(raw) {
-      // Supports:
-      // - Multiple terms separated by spaces, commas, or semicolons
-      // - Quoted phrases, for example: "data analysis"
       const text = (raw || "").trim().toLowerCase();
       if (!text) return [];
 
@@ -584,9 +623,6 @@
 
       variants.add(t);
 
-      // Simple singular/plural matching:
-      // - games -> game
-      // - game -> games
       if (t.length > 3) {
         if (t.endsWith("s")) {
           variants.add(t.slice(0, -1));
@@ -626,15 +662,12 @@
           return termVariants.some(group => matchesAnyVariant(group));
         }
 
-        // AND mode : every term group must match at least one variant
         return termVariants.every(group => matchesAnyVariant(group));
       });
     }
 
     function populateLessonList(keyword = "") {
-      const previouslySelected = Array.from(lessonSelect.selectedOptions).map(
-        o => o.value
-      );
+      const previouslySelected = Array.from(lessonSelect.selectedOptions).map(o => o.value);
       const filtered = getFilteredLessons(keyword);
 
       lessonSelect.innerHTML = "";
@@ -642,9 +675,7 @@
         const opt = document.createElement("option");
         opt.value = l.lessonCode;
         opt.textContent = l.lessonTitle;
-        if (previouslySelected.includes(l.lessonCode)) {
-          opt.selected = true;
-        }
+        if (previouslySelected.includes(l.lessonCode)) opt.selected = true;
         lessonSelect.appendChild(opt);
       });
     }
@@ -678,9 +709,7 @@
       exportBtn.disabled = false;
 
       const selectedCodes = selectedOptions.map(o => o.value);
-      const selectedLessons = currentGradeLessons.filter(l =>
-        selectedCodes.includes(l.lessonCode)
-      );
+      const selectedLessons = currentGradeLessons.filter(l => selectedCodes.includes(l.lessonCode));
       lastSelectedLessons = selectedLessons;
 
       selectedLessons.forEach(lesson => {
@@ -718,69 +747,57 @@
       return str;
     }
 
+    function isCstaCode(code) {
+      // Common CSTA formats:
+      // - 1A-AP-09
+      // - 1B-IC-20
+      // - 2-DA-07
+      // - K-CS-01
+      const t = String(code || "").trim();
+      return /^(K|\d+[A-Z]?)-[A-Z]{2}-\d{2}$/i.test(t);
+    }
+
     function exportMatrixCSV() {
-      if (!lastSelectedLessons.length || !currentCodes.length) {
+      if (!lastSelectedLessons.length) {
         alert("Select one or more lessons first.");
         return;
       }
 
       const extraFields = [];
       if (optCode.checked)
-        extraFields.push({
-          header: "Lesson code",
-          getter: l => l.lessonCode || ""
-        });
+        extraFields.push({ header: "Lesson code", getter: l => l.lessonCode || "" });
       if (optPathway.checked)
-        extraFields.push({
-          header: "Pathway category",
-          getter: l => l.pathwayCategory || ""
-        });
+        extraFields.push({ header: "Pathway category", getter: l => l.pathwayCategory || "" });
       if (optDesc.checked)
-        extraFields.push({
-          header: "Lesson description",
-          getter: l => l.description || ""
-        });
+        extraFields.push({ header: "Lesson description", getter: l => l.description || "" });
       if (optPrimaryDesc.checked)
-        extraFields.push({
-          header: "Primary description",
-          getter: l => l.primaryDesc || ""
-        });
+        extraFields.push({ header: "Primary description", getter: l => l.primaryDesc || "" });
       if (optSubDesc.checked)
-        extraFields.push({
-          header: "Supporting description",
-          getter: l => l.supportingDesc || ""
-        });
+        extraFields.push({ header: "Supporting description", getter: l => l.supportingDesc || "" });
       if (optAssess.checked)
-        extraFields.push({
-          header: "Assessment types",
-          getter: l => l.assessmentTypes || ""
-        });
+        extraFields.push({ header: "Assessment types", getter: l => l.assessmentTypes || "" });
       if (optPractices.checked)
-        extraFields.push({
-          header: "Computational practices",
-          getter: l => l.practices || ""
-        });
+        extraFields.push({ header: "Computational practices", getter: l => l.practices || "" });
       if (optFormat.checked)
-        extraFields.push({
-          header: "Lesson format",
-          getter: l => l.format || ""
-        });
+        extraFields.push({ header: "Lesson format", getter: l => l.format || "" });
       if (optTech.checked)
-        extraFields.push({
-          header: "Technology used",
-          getter: l => l.technology || ""
-        });
+        extraFields.push({ header: "Technology used", getter: l => l.technology || "" });
+
+      const codesToExport = optCstaMatrix.checked
+        ? currentCodes.filter(isCstaCode)
+        : [];
 
       const rows = [];
       const header = ["Grade", "Lesson title"];
       extraFields.forEach(f => header.push(f.header));
-      header.push(...currentCodes);
+      header.push(...codesToExport);
       rows.push(header);
 
       lastSelectedLessons.forEach(lesson => {
         const row = ["Grade " + lesson.grade, lesson.lessonTitle];
         extraFields.forEach(f => row.push(f.getter(lesson)));
-        currentCodes.forEach(code => {
+
+        codesToExport.forEach(code => {
           let cell = "";
           if (lesson.primaryCodes.includes(code)) {
             cell = "P";
@@ -789,16 +806,13 @@
           }
           row.push(cell);
         });
+
         rows.push(row);
       });
 
-      const csvContent = rows
-        .map(r => r.map(toCSVValue).join(","))
-        .join("\n");
+      const csvContent = rows.map(r => r.map(toCSVValue).join(",")).join("\n");
 
-      const blob = new Blob([csvContent], {
-        type: "text/csv;charset=utf-8;"
-      });
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -809,9 +823,11 @@
       URL.revokeObjectURL(url);
     }
 
-    function onGradesChanged() {
+    function applyFilters() {
       const selectedGrades = getSelectedGrades();
-      if (!selectedGrades.length) {
+      const selectedPathways = getSelectedPathways();
+
+      if (!selectedGrades.length || !selectedPathways.length) {
         currentGradeLessons = [];
         currentCodes = [];
         lessonSelect.innerHTML = "";
@@ -822,7 +838,11 @@
         return;
       }
 
-      currentGradeLessons = lessons.filter(l => selectedGrades.includes(l.grade));
+      currentGradeLessons = lessons.filter(l =>
+        selectedGrades.includes(l.grade) &&
+        selectedPathways.includes(l.pathwayCategory)
+      );
+
       currentCodes = getAllCodesForGrades(selectedGrades);
 
       populateLessonList(lessonSearch.value);
@@ -849,14 +869,11 @@
         cb.type = "checkbox";
         cb.value = String(g);
 
-        // Default: select Grade 4 if present, otherwise select all
-        if (g === 4) {
-          cb.checked = true;
-        }
+        if (g === 4) cb.checked = true;
 
         cb.addEventListener("change", () => {
-          syncSelectAllState();
-          onGradesChanged();
+          syncSelectAllState(gradeCheckboxesContainer, gradeSelectAll);
+          applyFilters();
         });
 
         label.appendChild(cb);
@@ -864,14 +881,36 @@
         gradeCheckboxesContainer.appendChild(label);
       });
 
-      // If nothing is checked (for example there is no Grade 4), select all by default
       if (!getSelectedGrades().length) {
         const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
         boxes.forEach(cb => cb.checked = true);
       }
 
-      syncSelectAllState();
-      onGradesChanged();
+      syncSelectAllState(gradeCheckboxesContainer, gradeSelectAll);
+    }
+
+    function renderPathwayCheckboxes() {
+      pathwayCheckboxesContainer.innerHTML = "";
+
+      PATHWAY_OPTIONS.forEach(p => {
+        const label = document.createElement("label");
+        label.className = "pathway-chip";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = p;
+        cb.checked = true; // default select all
+
+        cb.addEventListener("change", () => {
+          syncSelectAllState(pathwayCheckboxesContainer, pathwaySelectAll);
+          applyFilters();
+        });
+
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(p));
+        pathwayCheckboxesContainer.appendChild(label);
+      });
+
+      syncSelectAllState(pathwayCheckboxesContainer, pathwaySelectAll);
     }
 
     function initEvents() {
@@ -898,8 +937,16 @@
         const checked = gradeSelectAll.checked;
         const boxes = gradeCheckboxesContainer.querySelectorAll("input[type=checkbox]");
         boxes.forEach(cb => cb.checked = checked);
-        syncSelectAllState();
-        onGradesChanged();
+        syncSelectAllState(gradeCheckboxesContainer, gradeSelectAll);
+        applyFilters();
+      });
+
+      pathwaySelectAll.addEventListener("change", () => {
+        const checked = pathwaySelectAll.checked;
+        const boxes = pathwayCheckboxesContainer.querySelectorAll("input[type=checkbox]");
+        boxes.forEach(cb => cb.checked = checked);
+        syncSelectAllState(pathwayCheckboxesContainer, pathwaySelectAll);
+        applyFilters();
       });
     }
 
@@ -913,23 +960,23 @@
         return;
       }
 
-      loadStatus.textContent =
-        "Loaded " + lessons.length + " lessons from the curriculum sheet.";
+      loadStatus.textContent = "Loaded " + lessons.length + " lessons from the curriculum sheet.";
       loadStatus.className = "status ok";
 
-      // enable controls
       lessonSearch.disabled = false;
       lessonSelect.disabled = false;
       modeAnd.disabled = false;
       modeOr.disabled = false;
 
       renderGradeCheckboxes();
+      renderPathwayCheckboxes();
+
+      applyFilters();
       emptyState.style.display = "block";
     }
 
     function loadCsv() {
-      loadStatus.textContent =
-        "Loading lessons from curriculum sheet...";
+      loadStatus.textContent = "Loading lessons from curriculum sheet...";
       loadStatus.className = "status";
 
       Papa.parse(CURRICULUM_CSV_URL, {
@@ -937,21 +984,17 @@
         header: true,
         skipEmptyLines: true,
         complete: function (results) {
-          if (results.errors && results.errors.length) {
-            console.error(results.errors);
-          }
+          if (results.errors && results.errors.length) console.error(results.errors);
           initFromCsvRows(results.data || []);
         },
         error: function (err) {
           console.error(err);
-          loadStatus.textContent =
-            "There was a problem loading the curriculum sheet.";
+          loadStatus.textContent = "There was a problem loading the curriculum sheet.";
           loadStatus.className = "status error";
         }
       });
     }
 
-    // Initialise
     initEvents();
     loadCsv();
   </script>
